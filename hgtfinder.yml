@@ -1,0 +1,29 @@
+global:
+    - wait: 0
+    - sample_rule: (.*)_db.txt$
+    - PROJECT: /scratch/drn2/fastq
+    - indir: /scratch/drn2/fastq/data/processed/hgt
+    - outdir: /scratch/drn2/fastq/data/processed/hgt
+rules:
+    - HGTFinderII_R2:
+        local:
+              	- before_meta: |
+                        HPC THINGS
+
+                        #HPC jobname=HGTFinderII
+                        ##HPC module=openmpi/1.10.2 gencore/1 gencore_dev gencore_de_novo_genomic/1.0
+                        #HPC module=gencore/1 gencore_dev gencore_rnaseq gencore_annotation anaconda
+                        #HPC ntasks=1
+                        #HPC commands_per_node=1
+                        #HPC cpus_per_task=4
+                        #HPC mem=16GB
+                        #HPC walltime=2:00:00
+        process: |
+              #TASK tags={$sample}
+              source activate R2 && \
+              /scratch/drn2/HGTFinderII/HGTFinder \
+                 -d {$self->indir}/{$sample}_db.txt \
+                 -s {$self->indir}/{$sample}_self.txt \
+                 -t 574566 \
+                 -r 0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9 \
+                 -o {$self->outdir}/{$sample}_hgtf2out
