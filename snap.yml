@@ -1,0 +1,21 @@
+---
+global:
+    - PROJECT: $DIR
+    - indir: $DIR
+    - outdir: $DIR
+    - sample_rule: (Genome.*).fa$
+    - wait: 0
+rules:
+    - snap:
+        local:
+                - before_meta: |
+                        HPC THINGS
+
+                        #HPC module=NYUAD/3.0 gencore/1 hmmer/3.1b2
+                        #HPC mem=90GB
+                        #HPC walltime=96:00:00
+                        #HPC jobname=snap
+                        #
+        process: |
+           cd /scratch/drn2/software/snap && ./snap HMM/A.thaliana.hmm {$self->indir}/{$sample}.fa -aa {$self->outdir}/{$sample}.aa.fa -tx {$self->outdir}/{$sample}.tr.fa -gff -quiet -name {$sample} > {$self->outdir}/{$sample}.gff
+
