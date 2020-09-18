@@ -1,0 +1,24 @@
+---
+global:
+    - PROJECT: $DIR1
+    - indir: $DIR2
+    - outdir: $DIR3
+    - sample_rule: (.*).aa.fa
+    - HPC:
+      - module: 
+
+rules:
+
+    - diamond-blastp-fmt6:
+        local:
+          - HPC:
+            - jobname: diamond-blastp-fmt6
+            - module: 
+            - ntasks: 1
+            - cpus_per_task: 4
+            - commands_per_node: 1
+            - mem: 16GB
+            - walltime: 96:00:00
+        process: |
+            #TASK tags={$sample}
+            /scratch/drn2/software/diamond blastp --db /scratch/drn2/fastq/data/raw/db/nrD-tax.dmnd --query {$self->indir}/{$sample}.aa.fa --out {$self->outdir}/{$sample}.diamond.blastp.taxid-6default.txt --ultra-sensitive --threads 4 -k 10 --outfmt 6
