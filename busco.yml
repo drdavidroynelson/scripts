@@ -1,0 +1,24 @@
+---
+global:
+    - PROJECT: /scratch/drn2/fastq
+    - indir: $dir1
+    - outdir: $dir2
+    - sample_rule: (.*).fa
+    - HPC:
+      - module: 'gencore gencore_biosails gencore_rnaseq'
+
+rules:
+
+    - busco:
+        local:
+          - HPC:
+            - jobname: busco
+            - module: gencore/1 gencore_biosails gencore_rnaseq/1.0
+            - ntasks: 1
+            - cpus_per_task: 28
+            - commands_per_node: 1
+            - mem: 90GB
+            - walltime: 24:00:00
+        process: |
+            #TASK tags={$sample}
+            busco -i {$self->indir}/{$sample}.fa --long -q -e 0.01 -o {$sample}.busco -sp arabidopsis -l /scratch/drn2/scratch/drn2/fastscratch-transfer-transfer/drn2/db/busco_lineages/eukaryota_odb9 -c 12 -m geno
