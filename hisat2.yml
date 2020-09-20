@@ -1,0 +1,67 @@
+---
+global:
+    - PROJECT: /scratch/drn2/fastq
+    - indir: /scratch/drn2/fastq/data/processed/GH1_working/assemblies_abyss
+    - outdir: /scratch/drn2/fastq/data/processed/GH1_working/assemblies_abyss
+    - read_dir: /scratch/drn2/fastq/data/processed/GH1_working
+    - sample_rule: (.*).fa
+    - HPC:
+      - module: 'gencore gencore_biosails gencore_rnaseq'
+
+rules:
+
+    - hisat2_build:
+        local:
+          - HPC:
+            - jobname: hisat2_build
+            - module: gencore/1 gencore_biosails gencore_rnaseq/1.0
+            - ntasks: 1
+            - cpus_per_task: 28
+            - commands_per_node: 1
+            - mem: 90GB
+            - walltime: 24:00:00
+        process: |
+            #TASK tags={$sample}
+            hisat2-build {$self->indir}/{$sample}.fa {$self->outdir}/{$sample}
+    - hisat2:
+        local:
+          - HPC:
+            - jobname: hisat2
+            - module: gencore/1 gencore_biosails gencore_rnaseq/1.0
+            - ntasks: 1
+            - cpus_per_task: 36
+            - commands_per_node: 1
+            - mem: 500GB
+            - walltime: 24:00:00
+            - deps: hisat2_build
+        process: |
+            #TASK tags={$sample}
+            hisat2 -p 36 -x {$self->indir}/{$sample} -1 {$self->{read_dir}}/{$sample}_R1_001.fastq.gz -2 {$self->{read_dir}}/{$sample}_R2_001.fastq.gz -S {$self->outdir}/{$sample}.sam
+    - sam2bam:
+        local:
+          - HPC:
+            - jobname: sam2bam
+            - module: gencore/1 gencore_biosails gencore_rnaseq/1.0
+            - ntasks: 1
+            - cpus_per_task: 4
+            - commands_per_node: 1
+            - mem: 90GB
+            - walltime: 4:00:00
+            - deps: hisat2
+        process: |
+            #TASK tags={$sample}
+            samtools view -b -S -o {$self->outdir}/{$sample}.bam {$self->indir}/{$sample}.sam
+    - sort:
+        local:
+          - HPC:
+            - jobname: sort
+            - module: gencore/1 gencore_biosails gencore_rnaseq/1.0
+            - ntasks: 1
+            - cpus_per_task: 4
+            - commands_per_node: 1
+            - mem: 90GB
+            - walltime: 4:00:00
+            - deps: sam2bam
+        process: |
+            #TASK tags={$sample}
+            samtools sort -T {$self->outdir}/{$sample}-tmp -o {$self->outdir}/{$sample}.sorted.bam {$self->indir}/{$sample}.bam
