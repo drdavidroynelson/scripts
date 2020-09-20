@@ -1,0 +1,24 @@
+---
+global:
+    - PROJECT: /scratch/drn2/fastq
+    - indir: $DIR1
+    - outdir: $DIR2
+    - sample_rule: (.*).sam
+    - HPC:
+      - module: 
+
+rules:
+
+    - circosviz_v2:
+        local:
+          - HPC:
+            - jobname: circosviz
+            - module: 
+            - ntasks: 1
+            - cpus_per_task: 28
+            - commands_per_node: 1
+            - mem: 90GB
+            - walltime: 4:00:00
+        process: |
+            #TASK tags={$sample}
+            mkdir -p {$self->outdir}/{$sample} && cd {$self->outdir}/{$sample} && perl /scratch/drn2/fastq/scripts/circosviz_v2.pl -f /scratch/drn2/fastq/data/Guillermo-mangrove/data/analysis/circos/$FASTA.fasta -i {$self->indir}/{$sample}.sam
