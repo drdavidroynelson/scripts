@@ -1,0 +1,21 @@
+---
+global:
+    - PROJECT: /scratch/drn2
+    - indir: /scratch/drn2/fastq/data/processed/Sarah/Prochlorococcus-marinus-genome_assemblies/fasta
+    - outdir: /scratch/drn2/fastq/data/processed/Sarah/Prochlorococcus-marinus-genome_assemblies/fasta
+    - sample_rule: (.*).aa.fa$
+rules:
+    - vfam_hmmsearch:
+        local:
+                - before_meta: |
+                        #HPC THINGS
+
+                        #HPC module=NYUAD/3.0 gencore/1 hmmer/3.1b2
+                        #HPC mem=24GB
+                        #HPC walltime=48:00:00
+                        #HPC cpus_per_task=4
+                        #HPC jobname=vfam_hmmsearch
+                        #
+
+        process: |
+           /scratch/drn2/software/hmmer-3.1b2-linux-intel-x86_64/binaries/hmmsearch --cpu 4 --noali -E 0.00000000001 --domtblout {$self->outdir}/{$sample}.vfam.domtblout /scratch/drn2/software/PFAM/vFam-A_2014.hmm {$self->indir}/{$sample}.aa.fa
