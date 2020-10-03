@@ -1,0 +1,24 @@
+---
+global:
+    - PROJECT: /scratch/drn2/fastq
+    - indir: /scratch/drn2/fastq/data/processed/Diana
+    - outdir: /scratch/drn2/fastq/data/processed/Diana
+    - sample_rule: (.*).aa.fa
+    - HPC:
+      - module: 'gencore'
+
+rules:
+
+    - diamond-blastp-fmt6:
+        local:
+          - HPC:
+            - jobname: diamond-blastp-fmt6
+            - module: gencore/1
+            - ntasks: 1
+            - cpus_per_task: 4
+            - commands_per_node: 1
+            - mem: 16GB
+            - walltime: 96:00:00
+        process: |
+            #TASK tags={$sample}
+            /scratch/drn2/software/diamond blastp --db {$self->indir}/human.dmnd --query {$self->indir}/GCF_000409795.2_Chlorocebus_sabeus_1.1_protein.aa.fa --out {$self->outdir}/MonkeyToHuman.diamond.blastp.txt --ultra-sensitive --threads 4 -k 1 --outfmt 6 qseqid qlen sseqid sallseqid slen qstart qend sstart send qseq sseq staxids evalue bitscore score length pident nident mismatch positive gapopen gaps ppos qframe btop stitle salltitles qcovhsp qtitle
