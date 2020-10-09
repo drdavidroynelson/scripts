@@ -1,0 +1,36 @@
+---
+global:
+    - indir: "/scratch/drn2/fastq/data/raw/reads"
+    - outdir: "/scratch/drn2/fastq/data/processed"
+    - sample_rule: (Sample.*)$
+    - by_sample_outdir: 1
+    - find_by_dir: 1
+    - wait: 0
+rules:
+    - abyss-pe:
+        local:
+                - before_meta: |
+                        HPC THINGS
+
+                        #
+                        #HPC jobname=abyss-pemp
+                        #HPC ntasks=1
+                        #HPC procs=1
+                        #HPC cpus_per_task=28
+                        #HPC commands_per_node=2
+                        #HPC mem=90GB
+                        #HPC walltime=24:00:00
+        process: |
+            #TASK tags={$sample}
+            srun hostname && \
+            module load openmpi/1.10.2 gencore/1 gencore_de_novo_genomic/1.0 && \
+            mkdir -p {$self->outdir}/{$sample} && \
+            /scratch/drn2/abyss/bin/abyss-pe j=28 k=64 name={$sample} -C {$self->indir}/MP lib='pe1 pe2 pe3' mp='mp1 mp2 mp3' long='long1' \
+            pe1='{$self->indir}/PE/{$sample}_1_R1.pe.fastq.gz {$self->indir}/PE/{$sample}_1_R2.pe.fastq.gz' \
+            pe2='{$self->indir}/PE/{$sample}_2_R1.pe.fastq.gz {$self->indir}/PE/{$sample}_2_R2.pe.fastq.gz' \
+            pe3='{$self->indir}/PE/{$sample}_3_R1.pe.fastq.gz {$self->indir}/PE/{$sample}_3_R2.pe.fastq.gz' \
+            mp1='{$self->indir}/MP/{$sample}_1_R1.mp.fastq.gz {$self->indir}/MP/{$sample}_1_R2.mp.fastq.gz' \
+            mp2='{$self->indir}/MP/{$sample}_2_R1.mp.fastq.gz {$self->indir}/MP/{$sample}_2_R2.mp.fastq.gz' \
+            mp3='{$self->indir}/MP/{$sample}_3_R1.mp.fastq.gz {$self->indir}/MP/{$sample}_3_R2.mp.fastq.gz' \
+            long1=/scratch/drn2/fastq/data/processed/assemblies_beta/final/{$sample}-3.fa
+            --directory={$self->outdir}/{$sample}
