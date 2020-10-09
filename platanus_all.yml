@@ -1,0 +1,53 @@
+---
+global:
+    - PROJECT: /scratch/drn2
+    - indir: /scratch/drn2/fastq/data/processed/genomes_all
+    - outdir: /scratch/drn2/fastq/data/processed
+    - sample_rule: (.*).fa$
+
+rules:
+    - annotate:
+        local:
+                - before_meta: |
+                        HPC THINGS
+
+                        #HPC module=gencore gencore_base gencore_annotation hmmer/3.1b2
+                        #HPC mem=1000GB
+                        #HPC walltime=04:00:00
+                        #HPC cpus_per_task=4
+                        #HPC jobname=annotate
+                        #
+        process: |
+           python /scratch/drn2/quast-3.2/quast.py -o {$self->outdir}/{$sample}.quast --no-plots --no-html -u --gage -t 4 -m 1000 -G /scratch/drn2/fastq/data/processed/snap/{$sample}.gff {$self->indir}/{$sample}.fa && \
+           cd /scratch/drn2/snap && ./snap HMM/A.thaliana.hmm {$self->indir}/{$sample}.fa -aa /scratch/drn2/fastq/data/processed/snap/{$sample}.aa.fa -tx /scratch/drn2/fastq/data/processed/snap/{$sample}.tr.fa -gff -quiet -name {$sample} > /scratch/drn2/fastq/data/processed/snap/{$sample}.gff && \
+           python /scratch/drn2/quast-3.2/quast.py --no-plots --no-html -m 1000 -t 4 /scratch/drn2/fastq/data/processed/snap/{$sample}.tr.fa -o {$self->outdir}/{$sample}.t.quast && \
+           /scratch/drn2/diamond/diamond blastx --db //scratch/drn2//scratch/drn2/fastscratch-transfer-transfer/drn2/db/nrD --query /scratch/drn2/fastq/data/processed/snap/{$sample}.tr.fa --out {$self->outdir}/{$sample}.diamond.blastx.nr.xml --more-sensitive --threads 4 -k 1 --outfmt 5 && \
+           hmmsearch --cpu 4 --noali --domtblout {$self->outdir}/{$sample}.domtblout /scratch/drn2/PFAM/Pfam-A.hmm {$self->indir}/{$sample}.aa.fa
+[drn2@login-0-1 conf]$ cat platanus_all.yml
+---
+global:
+    - PROJECT: /scratch/drn2
+    - indir: /scratch/drn2/fastq/data/raw/GH1
+    - outdir: /scratch/drn2/fastq/data/processed
+    - sample_rule: (.*)_R1_001.fastq.trimmed
+    - wait: 0
+
+rules:
+
+    - GH1:
+        local:
+                - before_meta: |
+                        HPC THINGS
+
+                        #
+                        #HPC jobname=platanus_pipeline
+                        #HPC ntasks=1
+                        #HPC cpus_per_task=28
+                        #HPC commands_per_node=1
+                        #HPC mem=90GB
+                        #HPC walltime=24:00:00
+        process: |
+            #TASK tags={$sample}
+            /scratch/drn2/software/platanus assemble -o {$self->outdir}/{$sample} -f {$self->indir}/{$sample}_R1_001.fastq.trimmed {$self->indir}/{$sample}_R2_001.fastq.trimmed -t 28 -m 72 2>assemble.{$sample}.log && \
+            #/scratch/drn2/software/platanus scaffold -b {$self->outdir}/{$sample}_contigBubble.fa -c {$self->outdir}/{$sample}_contig.fa -n 375 -a 437 -d 25 -IP {$self->indir}/{$sample}_R1_001.fastq {$self->indir}/{$sample}_R2_001.fastq -o {$self->outdir}/{$sample} -t 28 && \
+            #/scratch/drn2/software/platanus gap_close -c {$self->outdir}/{$sample}_scaffold.fa -IP {$self->indir}/{$sample}_R1_001.fastq.trimmed {$self->indir}/{$sample}_R2_001.fastq.trimmed -o {$self->outdir}/{$sample} -t 28 2> gapclose.log
