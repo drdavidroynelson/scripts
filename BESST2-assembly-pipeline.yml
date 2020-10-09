@@ -1,0 +1,353 @@
+---
+global:
+    - PROJECT: /scratch/drn2/fastq
+    - indir: /scratch/drn2/fastq/data/raw/assemblies
+    - outdir: /scratch/drn2/fastq/data/processed
+    - ROOT: /scratch/drn2/fastq/data/raw
+    - read_dir: /scratch/drn2/fastq/data/raw/nextclip_ABC_cat
+    - lib_dir: /scratch/drn2/fastq/data/raw/lib
+    - file_rule: (Sample_.*).fa$
+   
+rules:
+    - hisat2-build:
+        local:
+                - before_meta: |
+                        HPC THINGS
+
+                        #HPC module=NYUAD/2.0 gcc zlib openssl anyenv/1
+                        #HPC mem=46GB
+                        #HPC walltime=00:20:00
+                        #HPC cpus_per_task=12
+                        #HPC queue=adserial
+                        #HPC commands_per_node=1
+                        #HPC procs=1
+                        #HPC jobname=hisat2build
+                        #
+        process: |
+           /scratch/drn2/hisat2-2.0.1-beta/hisat2-build {$self->indir}/{$sample}.fa {$self->outdir}/{$sample} 
+    - hisat2:
+        local:
+                - before_meta: |
+                        HPC THINGS
+                        
+                        #HPC module=NYUAD/2.0 gcc zlib openssl anyenv/1 
+                        #HPC mem=46GB
+                        #HPC walltime=01:00:00
+                        #HPC cpus_per_task=12
+                        #HPC queue=adserial
+                        #HPC commands_per_node=1
+                        #HPC procs=1
+                        #HPC jobname=hisat2rna
+                        #
+        process: |
+           /scratch/drn2/hisat2-2.0.1-beta/hisat2 --rf -D 20 -R 3 -N 0 -L 20 -i S,1,0.50 -p 12 -x {$self->indir}/{$sample} -1 {$self->{read_dir}}/{$sample}_1_ABC_R1.fastq -2 {$self->{read_dir}}/{$sample}_1_ABC_R2.fastq -S {$self->outdir}/{$sample}s.sam
+    - sam2bam:
+        local:
+                  - before_meta: |
+                        HPC THINGS
+
+                        #HPC module=NYUAD/2.0 gcc zlib openssl anyenv/1
+                        #HPC mem=23GB
+                        #HPC walltime=01:00:00
+                        #HPC cpus_per_task=12
+                        #HPC queue=adserial
+                        #HPC commands_per_node=2
+                        #HPC procs=2
+                        #HPC jobname=sam2bam
+                        #
+        process: |
+           samtools view -b -S -o {$self->outdir}/{$sample}s.bam {$self->indir}/{$sample}s.sam 
+    - sort:
+        local:
+                  - before_meta: |
+                        HPC THINGS
+
+                        #HPC module=NYUAD/2.0 gcc zlib openssl anyenv/1 ncurses/5.9 samtools/1.2
+                        #HPC mem=46GB
+                        #HPC walltime=01:00:00
+                        #HPC cpus_per_task=12
+                        #HPC queue=adserial
+                        #HPC commands_per_node=1
+                        #HPC procs=1
+                        #HPC jobname=samtools_sort
+                        #
+        process: |
+           samtools sort -T {$self->outdir}/{$sample}1tmp -o {$self->outdir}/{$sample}s.sorted.bam {$self->indir}/{$sample}s.bam
+    - index:
+        local:
+                  - before_meta: |
+                        HPC THINGS
+
+                        #HPC module=NYUAD/2.0 gcc zlib openssl anyenv/1
+                        #HPC mem=46GB
+                        #HPC walltime=00:40:00
+                        #HPC cpus_per_task=12
+                        #HPC queue=adserial
+                        #HPC commands_per_node=1
+                        #HPC procs=1
+                        #HPC jobname=index
+                        #
+        process: |
+           samtools index {$self->indir}/{$sample}s.sorted.bam 
+    - preprocess_BEST:
+        local:
+                  - override_process: 1
+                  - create_outdir: 0
+                  - before_meta: |
+                        #No HPC needed
+        process: |
+                {
+                        use Data::Dumper;
+                        open(my $fh, "/scratch/drn2/Mate_pair_inserts.csv");
+
+                        my $href = {};
+                        while(<$fh>){
+                                my $line = $_;
+                                next unless $line;
+                                my @tmp = split("\t", $line);
+                                my $sample = $tmp[0];
+                                my($rep) = $sample =~ m/_(\d+)$/;
+                                $sample =~ s/_(\d+)$//;
+                                #print "Line: $line\tSample: $sample\n";
+                                $href->{$sample}->{$rep} = $tmp[1];
+                        }
+                        $self->stash->{BESST2} = $href;
+                        print "#\n";
+                        ($SILENTLY);
+                }
+    - BESST2:
+        local:
+                  - before_meta: |
+                        HPC THINGS
+
+                        #HPC module=NYUAD/2.0 gcc zlib openssl anyenv/1 ncurses/5.9 samtools/1.2 anaconda/2.4.1
+                        #HPC mem=46GB
+                        #HPC walltime=2:00:00
+                        #HPC cpus_per_task=12
+                        #HPC queue=adserial
+                        #HPC commands_per_node=1
+                        #HPC procs=1
+                        #HPC jobname=BESST2_cascade
+                        #
+        process: |
+
+           source activate my_root && \
+           cd /scratch/drn2/BESST-2.1.0 && ./runBESST -c /scratch/drn2/fastq/data/raw/assemblies/{$sample}.fa -f /scratch/drn2/fastq/data/processed/sort/{$sample}s.sorted.bam --orientation rf -m {$self->stash->{BESST2}->{$sample}->{1}} -s 500 -o {$sample} && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/ && /scratch/drn2/hisat2-2.0.1-beta/hisat2-build Scaffolds_pass1.fa {$sample} && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/ && /scratch/drn2/hisat2-2.0.1-beta/hisat2 --rf -D 20 -R 3 -N 0 -L 20 -i S,1,0.50 -p 12 -x {$sample} -1 {$self->{read_dir}}/{$sample}_2_ABC_R1.fastq -2 {$self->{read_dir}}/{$sample}_2_ABC_R2.fastq -S {$sample}m.sam && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/ && samtools view -b -S -o {$sample}m.bam {$sample}m.sam && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/ && samtools sort -T {$self->outdir}/{$sample}2tmp -o {$sample}m.sorted.bam {$sample}m.bam && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/ && samtools index {$sample}m.sorted.bam 
+    - BESST2_2:
+        local:
+                  - before_meta: |
+                        HPC THINGS
+
+                        #HPC module=NYUAD/2.0 gcc zlib openssl anyenv/1 ncurses/5.9 samtools/1.2 anaconda/2.4.1
+                        #HPC mem=46GB
+                        #HPC walltime=2:00:00
+                        #HPC cpus_per_task=12
+                        #HPC queue=adserial
+                        #HPC commands_per_node=1
+                        #HPC procs=1
+                        #HPC jobname=BESST2_cascade_part2
+                        #
+        process: |
+           source activate my_root && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/ && /scratch/drn2/BESST-2.1.0/runBESST -c Scaffolds_pass1.fa -f {$sample}m.sorted.bam --orientation rf -m {$self->stash->{BESST2}->{$sample}->{2}} -s 1000 -o {$sample}-s 750 -o {$sample} && \cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/ && /scratch/drn2/hisat2-2.0.1-beta/hisat2-build Scaffolds_pass1.fa {$sample} && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/{$sample}/BESST_output/pass1/ && /scratch/drn2/hisat2-2.0.1-beta/hisat2-build Scaffolds_pass1.fa {$sample} && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/{$sample}/BESST_output/pass1/ && /scratch/drn2/hisat2-2.0.1-beta/hisat2 --rf -D 20 -R 3 -N 0 -L 20 -i S,1,0.50 -p 12 -x {$sample} -1 {$self->{read_dir}}/{$sample}_3_ABC_R1.fastq -2 {$self->{read_dir}}/{$sample}_3_ABC_R2.fastq -S {$sample}l.sam && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/{$sample}/BESST_output/pass1/ && samtools view -b -S -o {$sample}l.bam {$sample}l.sam && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/{$sample}/BESST_output/pass1/ && samtools sort -T {$self->outdir}/{$sample}3tmp -o {$sample}l.sorted.bam {$sample}l.bam && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/{$sample}/BESST_output/pass1/ && samtools index {$sample}l.sorted.bam && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/{$sample}/BESST_output/pass1/ && /scratch/drn2/BESST-2.1.0/runBESST -c Scaffolds_pass1.fa -f {$sample}l.sorted.bam --orientation rf -m {$self->stash->{BESST2}->{$sample}->{2}} -s 1000 -o {$sample} && \
+           cp /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/{$sample}/BESST_output/pass1/{$sample}/BESST_output/pass1/Scaffolds_pass1.fa {$self->outdir}/{$sample}.fa
+    - gapfiller:
+        local:
+                  - before_meta: |
+                        HPC THINGS
+
+                        #HPC module=NYUAD/2.0 gcc zlib openssl anyenv
+                        #HPC mem=180GB
+                        #HPC walltime=08:00:00
+                        #HPC cpus_per_task=12
+                        #HPC queue=bigmem
+                        #HPC commands_per_node=1
+                        #HPC procs=1
+                        #HPC jobname=gf_mp_1
+                        #
+        process: |
+           cd {$self->outdir}/ && perl /scratch/drn2/GapFiller_v1-10_linux-x86_64/GapFiller.pl -l {$self->{lib_dir}}/{$sample}.txt -s {$self->indir}/{$sample}.fa -T 12 -t 4 -i 1 -m 10 -o 1 -d 22000 -b {$sample}_gapfiller && \
+           cp {$self->outdir}/{$sample}_gapfiller/{$sample}_final_gapfilled.fasta /scratch/drn2/fastq/data/raw/assemblies/ && \
+           cp /scratch/drn2/fastq/data/raw/assemblies/{$sample}_final_gapfilled.fasta {$self->outdir}/{$sample}.fa
+    - hisat2-build:
+        local:
+              	- before_meta: |
+                        HPC THINGS
+
+                        #HPC module=NYUAD/2.0 gcc zlib openssl anyenv/1
+                        #HPC mem=46GB
+                        #HPC walltime=00:20:00
+                        #HPC cpus_per_task=12
+                        #HPC queue=adserial
+                        #HPC commands_per_node=1
+                        #HPC procs=1
+                        #HPC jobname=hisat2build
+                        #
+        process: |
+           /scratch/drn2/hisat2-2.0.1-beta/hisat2-build {$self->indir}/{$sample}.fa {$self->outdir}/{$sample}
+    - hisat2:
+	local:
+              	- before_meta: |
+                        HPC THINGS
+
+                        #HPC module=NYUAD/2.0 gcc zlib openssl anyenv/1
+                        #HPC mem=46GB
+                        #HPC walltime=01:00:00
+                        #HPC cpus_per_task=12
+                        #HPC queue=adserial
+                        #HPC commands_per_node=1
+                        #HPC procs=1
+                        #HPC jobname=hisat2rna
+                        #
+        process: |
+           /scratch/drn2/hisat2-2.0.1-beta/hisat2 --rf -D 20 -R 3 -N 0 -L 20 -i S,1,0.50 -p 12 -x {$self->indir}/{$sample} -1 {$self->{read_dir}}/{$sample}_1_ABC_R1.fastq -2 {$self->{read_dir}}/{$sample}_1_ABC_R2.fastq -S {$self->outdir}/{$sample}s.sam
+    - sam2bam:
+	local:
+                  - before_meta: |
+                        HPC THINGS
+
+                        #HPC module=NYUAD/2.0 gcc zlib openssl anyenv/1
+                        #HPC mem=23GB
+                        #HPC walltime=01:00:00
+                        #HPC cpus_per_task=12
+                        #HPC queue=adserial
+                        #HPC commands_per_node=2
+                        #HPC procs=2
+                        #HPC jobname=sam2bam
+                        #
+        process: |
+           samtools view -b -S -o {$self->outdir}/{$sample}s.bam {$self->indir}/{$sample}s.sam
+    - sort:
+	local:
+                  - before_meta: |
+                        HPC THINGS
+
+                        #HPC module=NYUAD/2.0 gcc zlib openssl anyenv/1 ncurses/5.9 samtools/1.2
+                        #HPC mem=46GB
+                        #HPC walltime=01:00:00
+                        #HPC cpus_per_task=12
+                        #HPC queue=adserial
+                        #HPC commands_per_node=1
+                        #HPC procs=1
+                        #HPC jobname=samtools_sort
+                        #
+        process: |
+           samtools sort -T {$self->outdir}/{$sample}1tmp -o {$self->outdir}/{$sample}s.sorted.bam {$self->indir}/{$sample}s.bam
+    - index:
+	local:
+                  - before_meta: |
+                        HPC THINGS
+
+                        #HPC module=NYUAD/2.0 gcc zlib openssl anyenv/1
+                        #HPC mem=46GB
+                        #HPC walltime=00:40:00
+                        #HPC cpus_per_task=12
+                        #HPC queue=adserial
+                        #HPC commands_per_node=1
+                        #HPC procs=1
+                        #HPC jobname=index
+                        #
+        process: |
+           samtools index {$self->indir}/{$sample}s.sorted.bam
+    - preprocess_BEST:
+        local:
+                  - override_process: 1
+                  - create_outdir: 0
+                  - before_meta: |
+                        #No HPC needed
+        process: |
+                {
+                        use Data::Dumper;
+                        open(my $fh, "/scratch/drn2/Mate_pair_inserts.csv");
+
+                        my $href = {};
+                        while(<$fh>){
+                                my $line = $_;
+                                next unless $line;
+                                my @tmp = split("\t", $line);
+                                my $sample = $tmp[0];
+                                my($rep) = $sample =~ m/_(\d+)$/;
+                                $sample =~ s/_(\d+)$//;
+                                #print "Line: $line\tSample: $sample\n";
+                                $href->{$sample}->{$rep} = $tmp[1];
+                        }
+                        $self->stash->{BESST2} = $href;
+                        print "#\n";
+                        ($SILENTLY);
+                }
+    - BESST2:
+	local:
+                  - before_meta: |
+                        HPC THINGS
+
+                        #HPC module=NYUAD/2.0 gcc zlib openssl anyenv/1 ncurses/5.9 samtools/1.2 anaconda/2.4.1
+                        #HPC mem=46GB
+                        #HPC walltime=2:00:00
+                        #HPC cpus_per_task=12
+                        #HPC queue=adserial
+                        #HPC commands_per_node=1
+                        #HPC procs=1
+                        #HPC jobname=BESST2_cascade
+                        #
+        process: |
+
+           source activate my_root && \
+           cd /scratch/drn2/BESST-2.1.0 && ./runBESST -c /scratch/drn2/fastq/data/raw/assemblies/{$sample}.fa -f /scratch/drn2/fastq/data/processed/sort/{$sample}s.sorted.bam --orientation rf -m {$self->stash->{BESST2}->{$sample}->{1}} -s 500 -o {$sample} && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/ && /scratch/drn2/hisat2-2.0.1-beta/hisat2-build Scaffolds_pass1.fa {$sample} && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/ && /scratch/drn2/hisat2-2.0.1-beta/hisat2 --rf -D 20 -R 3 -N 0 -L 20 -i S,1,0.50 -p 12 -x {$sample} -1 {$self->{read_dir}}/{$sample}_2_ABC_R1.fastq -2 {$self->{read_dir}}/{$sample}_2_ABC_R2.fastq -S {$sample}m.sam && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/ && samtools view -b -S -o {$sample}m.bam {$sample}m.sam && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/ && samtools sort -T {$self->outdir}/{$sample}2tmp -o {$sample}m.sorted.bam {$sample}m.bam && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/ && samtools index {$sample}m.sorted.bam
+    - BESST2_2:
+        local:
+                  - before_meta: |
+                        HPC THINGS
+
+                        #HPC module=NYUAD/2.0 gcc zlib openssl anyenv/1 ncurses/5.9 samtools/1.2 anaconda/2.4.1
+                        #HPC mem=46GB
+                        #HPC walltime=2:00:00
+                        #HPC cpus_per_task=12
+                        #HPC queue=adserial
+                        #HPC commands_per_node=1
+                        #HPC procs=1
+                        #HPC jobname=BESST2_cascade_part2
+                        #
+        process: |
+           source activate my_root && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/ && /scratch/drn2/BESST-2.1.0/runBESST -c Scaffolds_pass1.fa -f {$sample}m.sorted.bam --orientation rf -m {$self->stash->{BESST2}->{$sample}->{2}} -s 1000 -o {$sample}-s 750 -o {$sample} && \cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/ && /scratch/drn2/hisat2-2.0.1-beta/hisat2-build Scaffolds_pass1.fa {$sample} && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/{$sample}/BESST_output/pass1/ && /scratch/drn2/hisat2-2.0.1-beta/hisat2-build Scaffolds_pass1.fa {$sample} && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/{$sample}/BESST_output/pass1/ && /scratch/drn2/hisat2-2.0.1-beta/hisat2 --rf -D 20 -R 3 -N 0 -L 20 -i S,1,0.50 -p 12 -x {$sample} -1 {$self->{read_dir}}/{$sample}_3_ABC_R1.fastq -2 {$self->{read_dir}}/{$sample}_3_ABC_R2.fastq -S {$sample}l.sam && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/{$sample}/BESST_output/pass1/ && samtools view -b -S -o {$sample}l.bam {$sample}l.sam && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/{$sample}/BESST_output/pass1/ && samtools sort -T {$self->outdir}/{$sample}3tmp -o {$sample}l.sorted.bam {$sample}l.bam && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/{$sample}/BESST_output/pass1/ && samtools index {$sample}l.sorted.bam && \
+           cd /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/{$sample}/BESST_output/pass1/ && /scratch/drn2/BESST-2.1.0/runBESST -c Scaffolds_pass1.fa -f {$sample}l.sorted.bam --orientation rf -m {$self->stash->{BESST2}->{$sample}->{2}} -s 1000 -o {$sample} && \
+           cp /scratch/drn2/BESST-2.1.0/{$sample}/BESST_output/pass1/{$sample}/BESST_output/pass1/{$sample}/BESST_output/pass1/Scaffolds_pass1.fa {$self->outdir}/{$sample}.fa
+    - gapfiller:
+        local:
+                  - before_meta: |
+                        HPC THINGS
+
+                        #HPC module=NYUAD/2.0 gcc zlib openssl anyenv
+                        #HPC mem=180GB
+                        #HPC walltime=08:00:00
+                        #HPC cpus_per_task=12
+                        #HPC queue=bigmem
+                        #HPC commands_per_node=1
+                        #HPC procs=1
+                        #HPC jobname=gf_mp_1
+                        #
+        process: |
+           cd {$self->outdir}/ && perl /scratch/drn2/GapFiller_v1-10_linux-x86_64/GapFiller.pl -l {$self->{lib_dir}}/{$sample}.txt -s {$self->indir}/{$sample}.fa -T 12 -t 4 -i 1 -m 10 -o 1 -d 22000 -b {$sample}_gapfiller && \
+           cp {$self->outdir}/{$sample}_gapfiller/{$sample}_final_gapfilled.fasta /scratch/drn2/fastq/data/raw/assemblies/ && \
+           cp /scratch/drn2/fastq/data/raw/assemblies/{$sample}_final_gapfilled.fasta {$self->outdir}/{$sample}.fa
